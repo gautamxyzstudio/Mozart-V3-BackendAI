@@ -3,14 +3,17 @@ module.exports = ({ env }) => ({
     config: {
       provider: "aws-s3",
       providerOptions: {
+        baseUrl: env("R2_PUBLIC_URL"),
         s3Options: {
           credentials: {
-            accessKeyId: env("AWS_ACCESS_KEY_ID"),
-            secretAccessKey: env("AWS_ACCESS_SECRET"),
+            accessKeyId: env("R2_ACCESS_KEY_ID", env("AWS_ACCESS_KEY_ID")),
+            secretAccessKey: env("R2_SECRET_ACCESS_KEY", env("AWS_ACCESS_SECRET")),
           },
-          region: env("AWS_REGION"),
+          region: env("R2_REGION", env("AWS_REGION", "auto")),
+          endpoint: env("R2_ENDPOINT"),
           params: {
-            Bucket: env("AWS_BUCKET"),
+            ACL: env("R2_ACL", null),
+            Bucket: env("R2_BUCKET", env("AWS_BUCKET")),
           },
         },
       },

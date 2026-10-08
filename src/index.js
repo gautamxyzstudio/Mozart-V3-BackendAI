@@ -1,7 +1,12 @@
 'use strict';
 
+const sharp = require('sharp');
+
 module.exports = {
-  register(/*{ strapi }*/) { },
+  register(/*{ strapi }*/) {
+    // Disable sharp cache on Windows to avoid EBUSY file lock errors on temp files
+    sharp.cache(false);
+  },
 
   async bootstrap({ strapi }) {
 

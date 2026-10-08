@@ -1,0 +1,64 @@
+diff --git a/node_modules/@strapi/plugin-upload/server/services/image-manipulation.js b/node_modules/@strapi/plugin-upload/server/services/image-manipulation.js
+index 1c36bf4..cb1759f 100644
+--- a/node_modules/@strapi/plugin-upload/server/services/image-manipulation.js
++++ b/node_modules/@strapi/plugin-upload/server/services/image-manipulation.js
+@@ -6,6 +6,7 @@
+ const fs = require('fs');
+ const { join } = require('path');
+ const sharp = require('sharp');
++sharp.cache(false);
+ 
+ const {
+   file: { bytesToKbytes },
+diff --git a/node_modules/@strapi/plugin-upload/server/services/upload.js b/node_modules/@strapi/plugin-upload/server/services/upload.js
+index e29246d..db2f6aa 100644
+--- a/node_modules/@strapi/plugin-upload/server/services/upload.js
++++ b/node_modules/@strapi/plugin-upload/server/services/upload.js
+@@ -61,6 +61,20 @@ const createAndAssignTmpWorkingDirectoryToFiles = async (files) => {
+   return tmpWorkingDirectory;
+ };
+ 
++const safeRemoveTmpDir = async (tmpWorkingDirectory) => {
++  if (!tmpWorkingDirectory) return;
++  try {
++    await fse.remove(tmpWorkingDirectory);
++  } catch (error) {
++    // Retry cleanup asynchronously to handle Windows file locking delays (EBUSY)
++    setTimeout(async () => {
++      try {
++        await fse.remove(tmpWorkingDirectory);
++      } catch (_) {}
++    }, 1500);
++  }
++};
++
+ function filenameReservedRegex() {
+   // eslint-disable-next-line no-control-regex
+   return /[<>:"/\\|?*\u0000-\u001F]/g;
+@@ -212,7 +226,7 @@ module.exports = ({ strapi }) => ({
+       );
+     } finally {
+       // delete temporary folder
+-      await fse.remove(tmpWorkingDirectory);
++      await safeRemoveTmpDir(tmpWorkingDirectory);
+     }
+ 
+     return uploadedFiles;
+@@ -374,7 +388,7 @@ module.exports = ({ strapi }) => ({
+       _.set(fileData, 'provider', config.provider);
+     } finally {
+       // delete temporary folder
+-      await fse.remove(tmpWorkingDirectory);
++      await safeRemoveTmpDir(tmpWorkingDirectory);
+     }
+ 
+     return this.update(id, fileData, { user });
+@@ -478,7 +492,7 @@ module.exports = ({ strapi }) => ({
+       await Promise.all(enhancedFiles.map((file) => this.uploadFileAndPersist(file)));
+     } finally {
+       // delete temporary folder
+-      await fse.remove(tmpWorkingDirectory);
++      await safeRemoveTmpDir(tmpWorkingDirectory);
+     }
+   },
+ 
