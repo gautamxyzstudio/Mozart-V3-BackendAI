@@ -273,6 +273,93 @@ module.exports = {
   },
 
   /**
+   * 7. MORNING RELEASE-DAY NOTIFICATION
+   * Runs daily in the morning to find releases whose DigitalReleaseDate is TODAY.
+   * If a release was already completed (live before DigitalReleaseDate) or cancelled, it is skipped.
+   */
+  async checkAndSendReleaseDayNotifications() {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${year}-${month}-${day}`;
+
+      const startOfDay = new Date(year, now.getMonth(), now.getDate(), 0, 0, 0);
+
+      strapi.log.info(`📅 [NotificationEvents] Checking for releases scheduled to go live today: ${todayStr}`);
+
+      // Only query releases where DigitalReleaseDate is strictly today,
+      // and Status is NOT 'Completed' (already live) and NOT 'Cancelled'
+      const releases = await strapi.db
+        .query('api::publish-distribute.publish-distribute')
+        .findMany({
+          where: {
+            DigitalReleaseDate: todayStr,
+            Status: {
+              $notIn: ['Completed', 'Cancelled'],
+            },
+          },
+          populate: ['UserDetail'],
+        });
+
+      if (!releases || releases.length === 0) {
+        strapi.log.info(`ℹ️ [NotificationEvents] No pending releases scheduled to go live on ${todayStr}.`);
+        return { count: 0, sent: 0 };
+      }
+
+      let sentCount = 0;
+
+      for (const release of releases) {
+        const userId = release.UserDetail?.id;
+        if (!userId) continue;
+
+        const releaseTitle = release.ReleaseTitle || 'Your release';
+
+        // Prevent duplicate notification on the same day if server restarts
+        const alreadyNotified = await strapi.db
+          .query('api::notification.notification')
+          .findOne({
+            where: {
+              users_permissions_user: userId,
+              title: 'Your Release Goes Live Today! 🚀',
+              createdAt: {
+                $gte: startOfDay,
+              },
+            },
+          });
+
+        if (alreadyNotified) {
+          strapi.log.info(`⏭️ [NotificationEvents] User #${userId} already notified today for "${releaseTitle}".`);
+          continue;
+        }
+
+        const title = 'Your Release Goes Live Today! 🚀';
+        const message = `Get ready! Your release "${releaseTitle}" is scheduled to go live today. Share it with your fans and stream it now!`;
+
+        await notification.sendToUser(
+          userId,
+          title,
+          message,
+          {
+            type: 'RELEASE_GOES_LIVE_TODAY',
+            releaseId: String(release.id),
+            screen: 'ReleaseDetails',
+          }
+        );
+
+        sentCount++;
+      }
+
+      strapi.log.info(`🎉 [NotificationEvents] Sent ${sentCount} release-day notifications for ${todayStr}.`);
+      return { count: releases.length, sent: sentCount };
+    } catch (error) {
+      strapi.log.error('❌ [NotificationEvents] Error in checkAndSendReleaseDayNotifications:', error);
+      return { error: error.message };
+    }
+  },
+
+  /**
    * Example: Send notification on payout status updates
    */
   async onPayoutUpdated(userId, amount, status) {

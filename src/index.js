@@ -22,6 +22,23 @@ module.exports = {
 
     strapi.log.info('✔ PublishDistribute statuses recalculated');
 
+    // =========================================================
+    //    MORNING RELEASE-DAY NOTIFICATION CRON (Daily at 09:00 AM)
+    // =========================================================
+    const cron = require('node-cron');
+    const notificationEvents = require('./utils/notification-events');
+
+    cron.schedule('0 9 * * *', async () => {
+      strapi.log.info('⏰ [Cron] Running morning release-day notification check...');
+      try {
+        await notificationEvents.checkAndSendReleaseDayNotifications();
+      } catch (err) {
+        strapi.log.error('❌ [Cron] Error during morning release-day notification check:', err);
+      }
+    });
+
+    strapi.log.info('✔ Morning release-day notification cron scheduled (09:00 AM daily)');
+
 
     // =========================================================
     //    SEND NOTIFICATION TO ADMINS ON NEW USER/ARTIST/SONGS
