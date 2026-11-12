@@ -62,6 +62,11 @@ module.exports = {
 
             // If artist was created with verification requested
             if (result.requiredVerification === true) {
+              await notification.sendToAuthenticatedUsers(
+                "Artist Verification Request",
+                `${result.artistName} has submitted a verification request`
+              );
+
               const artist = await strapi.db
                 .query("api::artist-detail.artist-detail")
                 .findOne({
@@ -154,6 +159,11 @@ module.exports = {
               result.requiredVerification === true;
 
             if (isVerificationRequested) {
+              await notification.sendToAuthenticatedUsers(
+                "Artist Verification Request",
+                `${artist.artistName} has submitted a verification request`
+              );
+
               await notificationEvents.onArtistVerificationRequested(
                 userId,
                 artist.artistName,

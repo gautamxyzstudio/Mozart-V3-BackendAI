@@ -197,6 +197,82 @@ module.exports = {
   },
 
   /**
+   * 5. SUBSCRIPTION PURCHASED OR UPGRADED NOTIFICATION
+   * Triggered when a user buys or upgrades to a plan (Artist, Artist Plus, Pro Label, etc.).
+   *
+   * @param {number|string} userId
+   * @param {string} planName - e.g. "Artist", "Artist Plus", "Pro Label"
+   * @param {string} [subscriptionType="subscription"] - "subscription" | "upgrade"
+   */
+  async onSubscriptionPurchased(userId, planName, subscriptionType = 'subscription') {
+    try {
+      if (!userId) return;
+
+      const name = planName || 'Subscription';
+      const isUpgrade = String(subscriptionType || '').toLowerCase() === 'upgrade';
+
+      const title = isUpgrade
+        ? `Plan Upgraded to ${name}! 🚀`
+        : `Subscription Activated! 👑`;
+
+      const message = isUpgrade
+        ? `Congratulations! Your plan has been upgraded to ${name}. Your new limits and benefits are now active.`
+        : `Welcome to ${name}! Your subscription is now active. Enjoy full access to all your plan benefits.`;
+
+      await notification.sendToUser(
+        userId,
+        title,
+        message,
+        {
+          type: isUpgrade ? 'SUBSCRIPTION_UPGRADED' : 'SUBSCRIPTION_PURCHASED',
+          plan: name,
+          screen: 'Subscription',
+        }
+      );
+
+      strapi.log.info(`👑 [NotificationEvents] Subscription notification sent to user #${userId} for plan "${name}"`);
+    } catch (error) {
+      strapi.log.error('❌ [NotificationEvents] Error in onSubscriptionPurchased:', error);
+    }
+  },
+
+  /**
+   * 6. ARTIST ADD-ON PURCHASED NOTIFICATION
+   * Triggered when a user purchases extra artist slots.
+   *
+   * @param {number|string} userId
+   * @param {number|string} additionalArtists - e.g. 5, 10
+   * @param {number|string} [newTotalLimit]
+   */
+  async onArtistAddonPurchased(userId, additionalArtists, newTotalLimit = null) {
+    try {
+      if (!userId) return;
+
+      const count = Number(additionalArtists) || 1;
+      const title = 'Artist Add-on Activated! 🎤';
+      const message = newTotalLimit
+        ? `Success! You added ${count} extra artist slot${count > 1 ? 's' : ''}. Your total artist limit is now ${newTotalLimit}.`
+        : `Success! You added ${count} extra artist slot${count > 1 ? 's' : ''} to your account.`;
+
+      await notification.sendToUser(
+        userId,
+        title,
+        message,
+        {
+          type: 'ARTIST_ADDON_PURCHASED',
+          additionalArtists: String(count),
+          newTotalLimit: String(newTotalLimit || ''),
+          screen: 'ArtistList',
+        }
+      );
+
+      strapi.log.info(`🎤 [NotificationEvents] Artist add-on (${count} slots) notification sent to user #${userId}`);
+    } catch (error) {
+      strapi.log.error('❌ [NotificationEvents] Error in onArtistAddonPurchased:', error);
+    }
+  },
+
+  /**
    * Example: Send notification on payout status updates
    */
   async onPayoutUpdated(userId, amount, status) {

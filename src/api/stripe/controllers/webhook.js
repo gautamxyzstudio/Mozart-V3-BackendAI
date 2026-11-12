@@ -269,6 +269,14 @@ module.exports = {
               description: `Purchased ${artists} additional artists`,
             });
 
+            // 🔔 Send in-app & push notification to the user
+            const notificationEvents = require("../../../utils/notification-events");
+            await notificationEvents.onArtistAddonPurchased(
+              userId,
+              artists,
+              currentArtists + artists
+            );
+
             return ctx.send({
               received: true,
             });
