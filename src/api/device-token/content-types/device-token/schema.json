@@ -1,0 +1,37 @@
+{
+  "kind": "collectionType",
+  "collectionName": "device_tokens",
+  "info": {
+    "singularName": "device-token",
+    "pluralName": "device-tokens",
+    "displayName": "device-tokens"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "token": {
+      "type": "text",
+      "unique":true,
+      "required":true
+    },
+    "users_permissions_user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "inversedBy": "device_tokens"
+    },
+    "platform": {
+      "type": "enumeration",
+      "enum": [
+        "web",
+        "android",
+        "ios"
+      ]
+    },
+    "lastActivityAt": {
+      "type": "datetime"
+    }
+  }
+}

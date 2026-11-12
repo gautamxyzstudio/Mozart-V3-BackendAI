@@ -1,64 +1,106 @@
 'use strict';
 
-module.exports = {
+const { sendPushToUser, sendPushToAllAuthenticatedUsers } = require('./push-notification');
 
-  async sendToAuthenticatedUsers(title, message) {
+module.exports = {
+  /**
+   * Broadcast in-app notification to all authenticated users.
+   * Push notification to devices is DISABLED by default so that routine system events
+   * (e.g. artist creation, user registration) do not spam every user's mobile device.
+   *
+   * @param {string} title
+   * @param {string} message
+   * @param {object} [extraData] - Optional metadata payload for client deep-linking
+   * @param {object} [options]
+   * @param {boolean} [options.sendPush=false] - Only send device push if explicitly set to true
+   */
+  async sendToAuthenticatedUsers(title, message, extraData = {}, options = {}) {
     try {
       const role = await strapi.db
-        .query("plugin::users-permissions.role")
+        .query('plugin::users-permissions.role')
         .findOne({
-          where: { type: "authenticated" },
+          where: { type: 'authenticated' },
         });
 
       if (!role) return;
 
       const users = await strapi.db
-        .query("plugin::users-permissions.user")
+        .query('plugin::users-permissions.user')
         .findMany({
           where: { role: role.id },
-          select: ["id"],
+          select: ['id'],
         });
 
       if (!users.length) return;
 
+      // 1. Create in-app notification records in DB for each user
       for (const user of users) {
         await strapi.db
-          .query("api::notification.notification")
+          .query('api::notification.notification')
           .create({
             data: {
               title,
               message,
-              users_permissions_user: user.id, 
+              users_permissions_user: user.id,
               publishedAt: new Date(),
             },
           });
       }
 
-      console.log("✅ Notifications sent:", users.length);
+      strapi.log.info(`✅ [Notification] In-app notifications created for ${users.length} users.`);
+
+      // 2. Only dispatch broadcast push notifications if explicitly requested
+      if (options.sendPush === true) {
+        await sendPushToAllAuthenticatedUsers({
+          title,
+          body: message,
+          data: extraData,
+        });
+      }
 
     } catch (err) {
-      console.error("❌ Notification error:", err);
+      strapi.log.error('❌ Notification broadcast error:', err);
     }
   },
 
-  async sendToUser(userId, title, message) {
-  try {
-    if (!userId) return;
+  /**
+   * Send notification to a specific user (In-App DB + FCM/Expo Device Push)
+   *
+   * @param {number|string} userId - Strapi user ID
+   * @param {string} title
+   * @param {string} message
+   * @param {object} [extraData] - Optional metadata payload for client deep-linking
+   * @param {object} [options]
+   * @param {boolean} [options.sendPush=true] - Whether to send device push (defaults to true)
+   */
+  async sendToUser(userId, title, message, extraData = {}, options = { sendPush: true }) {
+    try {
+      if (!userId) return;
 
-    await strapi.db
-      .query("api::notification.notification")
-      .create({
-        data: {
+      // 1. Save in-app notification to database
+      await strapi.db
+        .query('api::notification.notification')
+        .create({
+          data: {
+            title,
+            message,
+            users_permissions_user: userId,
+            publishedAt: new Date(),
+          },
+        });
+
+      // 2. Dispatch push notification to this specific user's registered devices
+      if (options.sendPush !== false) {
+        await sendPushToUser(userId, {
           title,
-          message,
-          users_permissions_user: userId,
-          publishedAt: new Date(),
-        },
-      });
+          body: message,
+          data: extraData,
+        });
+      }
 
-    console.log("✅ Notification sent to user:", userId);
-  } catch (err) {
-    console.error("❌ User notification error:", err);
-  }
-}
+      strapi.log.info(`✅ [Notification] Sent to user #${userId} (In-App + Push)`);
+    } catch (err) {
+      strapi.log.error('❌ User notification error:', err);
+    }
+  },
 };

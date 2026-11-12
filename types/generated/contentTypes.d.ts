@@ -835,6 +835,11 @@ export interface PluginUsersPermissionsUser extends Schema.CollectionType {
       'oneToMany',
       'api::ticket-raise.ticket-raise'
     >;
+    device_tokens: Attribute.Relation<
+      'plugin::users-permissions.user',
+      'oneToMany',
+      'api::device-token.device-token'
+    >;
     createdAt: Attribute.DateTime;
     updatedAt: Attribute.DateTime;
     createdBy: Attribute.Relation<
@@ -1177,6 +1182,42 @@ export interface ApiCsvReportLogCsvReportLog extends Schema.CollectionType {
       Attribute.Private;
     updatedBy: Attribute.Relation<
       'api::csv-report-log.csv-report-log',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
+export interface ApiDeviceTokenDeviceToken extends Schema.CollectionType {
+  collectionName: 'device_tokens';
+  info: {
+    singularName: 'device-token';
+    pluralName: 'device-tokens';
+    displayName: 'device-tokens';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    token: Attribute.Text & Attribute.Required & Attribute.Unique;
+    users_permissions_user: Attribute.Relation<
+      'api::device-token.device-token',
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    platform: Attribute.Enumeration<['web', 'android', 'ios']>;
+    lastActivityAt: Attribute.DateTime;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::device-token.device-token',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::device-token.device-token',
       'oneToOne',
       'admin::user'
     > &
@@ -2361,6 +2402,7 @@ declare module '@strapi/types' {
       'api::billing-card.billing-card': ApiBillingCardBillingCard;
       'api::blog.blog': ApiBlogBlog;
       'api::csv-report-log.csv-report-log': ApiCsvReportLogCsvReportLog;
+      'api::device-token.device-token': ApiDeviceTokenDeviceToken;
       'api::distribute-draft.distribute-draft': ApiDistributeDraftDistributeDraft;
       'api::distribute-track.distribute-track': ApiDistributeTrackDistributeTrack;
       'api::enterprise-commission.enterprise-commission': ApiEnterpriseCommissionEnterpriseCommission;
