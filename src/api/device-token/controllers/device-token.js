@@ -51,7 +51,6 @@ module.exports = createCoreController('api::device-token.device-token', ({ strap
           });
 
         return ctx.send({
-          success: true,
           message: 'Device token refreshed successfully',
         });
       }
@@ -69,7 +68,6 @@ module.exports = createCoreController('api::device-token.device-token', ({ strap
         });
 
       return ctx.send({
-        success: true,
         message: 'Device token registered successfully',
       });
     } catch (error) {
@@ -97,7 +95,6 @@ module.exports = createCoreController('api::device-token.device-token', ({ strap
         });
 
       return ctx.send({
-        success: true,
         message: 'Device token unregistered successfully',
       });
     } catch (error) {
@@ -139,7 +136,6 @@ module.exports = createCoreController('api::device-token.device-token', ({ strap
       });
 
       return ctx.send({
-        success: true,
         message: 'Test push notification dispatched',
         stats: result,
       });

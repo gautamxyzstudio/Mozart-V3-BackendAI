@@ -59,6 +59,25 @@ module.exports = {
               "New Artist Added",
               `${result.artistName} has been added`
             );
+
+            // If artist was created with verification requested
+            if (result.requiredVerification === true) {
+              const artist = await strapi.db
+                .query("api::artist-detail.artist-detail")
+                .findOne({
+                  where: { id: result.id },
+                  populate: ["owner"],
+                });
+              const userId = artist?.owner?.id;
+              if (userId) {
+                const notificationEvents = require('./utils/notification-events');
+                await notificationEvents.onArtistVerificationRequested(
+                  userId,
+                  artist.artistName,
+                  artist.id
+                );
+              }
+            }
           }
 
           // 🎶 RELEASE CREATED
@@ -91,14 +110,20 @@ module.exports = {
 
         // 🎤 Track artist verification
         if (event.model.uid === "api::artist-detail.artist-detail") {
-          const existing = await strapi.db
-            .query("api::artist-detail.artist-detail")
-            .findOne({
-              where: { id: where.id },
-              select: ["itsVerified"],
-            });
+          const targetId = where?.id || (typeof where === 'number' || typeof where === 'string' ? where : null);
+          if (targetId) {
+            const existing = await strapi.db
+              .query("api::artist-detail.artist-detail")
+              .findOne({
+                where: { id: targetId },
+                select: ["itsVerified", "requiredVerification"],
+              });
 
-          previousArtistVerifyMap[where.id] = existing?.itsVerified;
+            previousArtistVerifyMap[targetId] = {
+              itsVerified: existing?.itsVerified,
+              requiredVerification: existing?.requiredVerification,
+            };
+          }
         }
       },
       async afterUpdate(event) {
@@ -106,42 +131,67 @@ module.exports = {
         const notification = require('./utils/notification');
 
         // =====================================================
-        // 🎤 ARTIST VERIFIED → notify owner
+        // 🎤 ARTIST VERIFICATION NOTIFICATIONS → notify owner
         // =====================================================
-if (model.uid === "api::artist-detail.artist-detail") {
+        if (model.uid === "api::artist-detail.artist-detail") {
+          const previous = previousArtistVerifyMap[result.id] || {};
+          delete previousArtistVerifyMap[result.id];
 
-  if (!Object.prototype.hasOwnProperty.call(params.data, "itsVerified")) return;
+          const artist = await strapi.db
+            .query("api::artist-detail.artist-detail")
+            .findOne({
+              where: { id: result.id },
+              populate: ["owner"],
+            });
 
-  const newStatus = result.itsVerified;
+          const userId = artist?.owner?.id;
+          if (userId) {
+            const notificationEvents = require('./utils/notification-events');
 
-  const artist = await strapi.db
-    .query("api::artist-detail.artist-detail")
-    .findOne({
-      where: { id: result.id },
-      populate: ["owner"],
-    });
+            // 1. User submitted verification request (requiredVerification changed to true)
+            const isVerificationRequested =
+              previous.requiredVerification !== true &&
+              result.requiredVerification === true;
 
-  const userId = artist?.owner?.id;
-  if (!userId) return;
+            if (isVerificationRequested) {
+              await notificationEvents.onArtistVerificationRequested(
+                userId,
+                artist.artistName,
+                artist.id
+              );
+            }
 
-  console.log("ARTIST STATUS UPDATED:", newStatus);
+            // 2. Admin approved verification (itsVerified changed to true)
+            const isVerificationApproved =
+              previous.itsVerified !== true &&
+              result.itsVerified === true;
 
-  if (newStatus === true) {
-    await notification.sendToUser(
-      userId,
-      "Artist Verified",
-      `${artist.artistName} is now verified `
-    );
-  }
+            if (isVerificationApproved) {
+              await notificationEvents.onArtistVerificationUpdated(
+                userId,
+                artist.artistName,
+                true,
+                artist.id
+              );
+            }
 
-  if (newStatus === false) {
-    await notification.sendToUser(
-      userId,
-      "Artist Verification Rejected ❌",
-      `${artist.artistName} verification was rejected`
-    );
-  }
-}
+            // 3. Admin rejected verification:
+            // - requiredVerification reset from true to false while itsVerified remains false/not true
+            // - OR itsVerified revoked from true to false
+            const isVerificationRejected =
+              (previous.requiredVerification === true && result.requiredVerification === false && result.itsVerified !== true) ||
+              (previous.itsVerified === true && result.itsVerified === false);
+
+            if (isVerificationRejected) {
+              await notificationEvents.onArtistVerificationUpdated(
+                userId,
+                artist.artistName,
+                false,
+                artist.id
+              );
+            }
+          }
+        }
 
         // =====================================================
         // 🎶 RELEASE STATUS CHANGE → notify owner
@@ -170,10 +220,12 @@ if (model.uid === "api::artist-detail.artist-detail") {
             const userId = release?.UserDetail?.id;
 
             if (userId) {
-              await notification.sendToUser(
+              const notificationEvents = require('./utils/notification-events');
+              await notificationEvents.onReleaseStatusChanged(
                 userId,
-                `Release ${newStatus} `,
-                `${release.ReleaseTitle} is ${newStatus}`
+                release.ReleaseTitle,
+                newStatus,
+                release.id
               );
             }
           }
