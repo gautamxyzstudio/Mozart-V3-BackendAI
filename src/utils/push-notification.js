@@ -77,7 +77,7 @@ async function pruneInvalidTokens(tokens) {
 
 /**
  * Sends push notifications to Expo Push Tokens (ExponentPushToken[...])
- * Optimized for Android with high priority and default notification channel.
+ * Optimized for Android and handles cross-project experience IDs seamlessly.
  *
  * @param {string[]} tokens
  * @param {object} payload - { title, body, data }
@@ -87,55 +87,61 @@ async function sendExpoPush(tokens, { title, body, data = {} }) {
     return { successCount: 0, failureCount: 0, invalidTokens: [] };
   }
 
-  const messages = tokens.map((token) => ({
-    to: token,
-    sound: 'default',
-    title,
-    body,
-    data,
-    priority: 'high',           // Required for instant display on Android
-    channelId: 'default',       // Required for Android 8.0+ notification channels
-    _displayInForeground: true, // Display banner even if app is in foreground
-  }));
+  let successCount = 0;
+  let failureCount = 0;
+  const invalidTokens = [];
 
-  try {
-    const response = await axios.post('https://exp.host/--/api/v2/push/send', messages, {
-      headers: {
-        'Accept': 'application/json',
-        'Accept-encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-    });
+  const sendSingle = async (token) => {
+    try {
+      const message = {
+        to: token,
+        sound: 'default',
+        title,
+        body,
+        data,
+        priority: 'high',           // Required for instant display on Android
+        channelId: 'default',       // Required for Android 8.0+ notification channels
+        _displayInForeground: true, // Display banner even if app is in foreground
+      };
 
-    const invalidTokens = [];
-    let successCount = 0;
-    let failureCount = 0;
+      const res = await axios.post('https://exp.host/--/api/v2/push/send', message, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      });
 
-    const tickets = response.data?.data || [];
-    tickets.forEach((ticket, idx) => {
-      if (ticket.status === 'ok') {
+      const ticket = res.data?.data;
+      if (ticket?.status === 'ok') {
         successCount++;
       } else {
         failureCount++;
-        strapi.log.error(`❌ [Expo Push Failed] Token: "${tokens[idx]}"`);
-        strapi.log.error(`   Message: ${ticket.message || 'No message'}`);
-        strapi.log.error(`   Details: ${JSON.stringify(ticket.details || {})}`);
-        if (ticket.details?.error === 'DeviceNotRegistered') {
-          invalidTokens.push(tokens[idx]);
+        strapi.log.error(`❌ [Expo Push Failed] Token: "${token}" | Error: ${ticket?.message || ticket?.details?.error}`);
+        if (ticket?.details?.error === 'DeviceNotRegistered') {
+          invalidTokens.push(token);
         }
       }
-    });
-
-    if (invalidTokens.length > 0) {
-      await pruneInvalidTokens(invalidTokens);
+    } catch (err) {
+      failureCount++;
+      const errData = err.response?.data?.errors?.[0] || err.response?.data || err.message;
+      strapi.log.error(`❌ [Expo Push Error] Token: "${token}" |`, errData);
     }
+  };
 
-    strapi.log.info(`📱 [Expo Push] Sent: ${successCount} ok, ${failureCount} failed.`);
-    return { successCount, failureCount, invalidTokens };
-  } catch (error) {
-    strapi.log.error('❌ [Expo Push] Error sending push notification:', error.response?.data || error.message);
-    return { successCount: 0, failureCount: tokens.length, invalidTokens: [] };
+  // Dispatch in concurrent batches of 20 to prevent socket saturation while maintaining top performance
+  const BATCH_SIZE = 20;
+  for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+    const chunk = tokens.slice(i, i + BATCH_SIZE);
+    await Promise.all(chunk.map((t) => sendSingle(t)));
   }
+
+  if (invalidTokens.length > 0) {
+    await pruneInvalidTokens(invalidTokens);
+  }
+
+  strapi.log.info(`📱 [Expo Push] Sent: ${successCount} ok, ${failureCount} failed.`);
+  return { successCount, failureCount, invalidTokens };
 }
 
 /**
