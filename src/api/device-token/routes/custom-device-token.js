@@ -26,5 +26,13 @@ module.exports = {
         auth: {},
       },
     },
+    {
+      method: 'POST',
+      path: '/device-tokens/send-promotional',
+      handler: 'device-token.sendPromotionalNotification',
+      config: {
+        auth: {},
+      },
+    },
   ],
 };

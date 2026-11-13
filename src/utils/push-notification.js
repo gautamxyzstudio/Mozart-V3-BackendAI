@@ -294,6 +294,7 @@ async function sendPushToUser(userId, { title, body, data = {}, imageUrl = null 
  * Sends a push notification to all authenticated users with registered devices.
  *
  * @param {object} payload - { title, body, data, imageUrl }
+ * @returns {Promise<{ totalTokens: number, successCount: number, failureCount: number, invalidTokens: string[] }>}
  */
 async function sendPushToAllAuthenticatedUsers({ title, body, data = {}, imageUrl = null }) {
   try {
@@ -303,18 +304,37 @@ async function sendPushToAllAuthenticatedUsers({ title, body, data = {}, imageUr
         select: ['token'],
       });
 
-    if (!deviceRecords || !deviceRecords.length) return;
+    if (!deviceRecords || !deviceRecords.length) {
+      return { totalTokens: 0, successCount: 0, failureCount: 0, invalidTokens: [] };
+    }
 
     const allTokens = deviceRecords.map((d) => d.token).filter(Boolean);
+
+    let successCount = 0;
+    let failureCount = 0;
+    const invalidTokens = [];
 
     // Multicast in chunks of 500
     const CHUNK_SIZE = 500;
     for (let i = 0; i < allTokens.length; i += CHUNK_SIZE) {
       const chunk = allTokens.slice(i, i + CHUNK_SIZE);
-      await sendPushToTokens(chunk, { title, body, data, imageUrl });
+      const res = await sendPushToTokens(chunk, { title, body, data, imageUrl });
+      successCount += res.successCount || 0;
+      failureCount += res.failureCount || 0;
+      if (res.invalidTokens && res.invalidTokens.length > 0) {
+        invalidTokens.push(...res.invalidTokens);
+      }
     }
+
+    return {
+      totalTokens: allTokens.length,
+      successCount,
+      failureCount,
+      invalidTokens,
+    };
   } catch (error) {
     strapi.log.error('❌ [Push] Failed to send push to all users:', error);
+    return { totalTokens: 0, successCount: 0, failureCount: 0, invalidTokens: [], error: error.message };
   }
 }
 

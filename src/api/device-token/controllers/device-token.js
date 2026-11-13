@@ -5,7 +5,7 @@
  */
 
 const { createCoreController } = require('@strapi/strapi').factories;
-const { sendPushToUser } = require('../../../utils/push-notification');
+const { sendPushToUser, sendPushToAllAuthenticatedUsers } = require('../../../utils/push-notification');
 
 module.exports = createCoreController('api::device-token.device-token', ({ strapi }) => ({
 
@@ -142,6 +142,71 @@ module.exports = createCoreController('api::device-token.device-token', ({ strap
     } catch (error) {
       strapi.log.error('❌ Error sending test push:', error);
       return ctx.internalServerError('Failed to send test push notification');
+    }
+  },
+
+  /**
+   * Admin-only: Send promotional push notification to all stored device tokens
+   * POST /api/device-tokens/send-promotional
+   * Body: { title, message, imageUrl?, data?, saveInApp? }
+   */
+  async sendPromotionalNotification(ctx) {
+    try {
+      const user = ctx.state.user;
+      if (!user) {
+        return ctx.unauthorized('Authentication required');
+      }
+
+      // Check admin privileges
+      let roleName = user.role?.name?.toLowerCase();
+      let roleType = user.role?.type?.toLowerCase();
+
+      if (!roleName && !roleType) {
+        const fullUser = await strapi.db
+          .query('plugin::users-permissions.user')
+          .findOne({
+            where: { id: user.id },
+            populate: ['role'],
+          });
+        roleName = fullUser?.role?.name?.toLowerCase() || '';
+        roleType = fullUser?.role?.type?.toLowerCase() || '';
+      }
+
+      const isAdmin = roleName.includes('authenticated') || roleType.includes('authenticated');
+      if (!isAdmin) {
+        return ctx.forbidden('Only administrators can send promotional notifications');
+      }
+
+      const { title, message, body } = ctx.request.body || {};
+      const content = message || body;
+
+      if (!title || typeof title !== 'string' || !title.trim()) {
+        return ctx.badRequest('A notification "title" is required');
+      }
+
+      if (!content || typeof content !== 'string' || !content.trim()) {
+        return ctx.badRequest('A notification "message" is required');
+      }
+
+      const cleanTitle = title.trim();
+      const cleanContent = content.trim();
+
+      // Dispatch push notification exclusively to all stored device tokens (No in-app notifications)
+      const stats = await sendPushToAllAuthenticatedUsers({
+        title: cleanTitle,
+        body: cleanContent,
+        data: {
+          type: 'PROMOTIONAL',
+        },
+      });
+
+      return ctx.send({
+        message: 'Promotional push notification sent successfully',
+        stats,
+      });
+    } catch (error) {
+      strapi.log.error('❌ Error sending promotional notification:', error);
+      return ctx.internalServerError('Failed to send promotional notification');
     }
   },
 
