@@ -10,6 +10,9 @@ module.exports = {
 
   async bootstrap({ strapi }) {
 
+    // Keep Cloudflare R2 in sync: delete/replace media → remove from bucket
+    require('./utils/media-cleanup')(strapi);
+
     const releases = await strapi.db
       .query('api::publish-distribute.publish-distribute')
       .findMany({ select: ['id'] });
